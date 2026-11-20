@@ -1,0 +1,84 @@
+name: Validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    name: Terraform (formato y validación)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Instalar Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Verificar formato
+        run: terraform fmt -check -recursive
+
+      - name: Inicializar sin backend
+        run: terraform init -backend=false
+
+      - name: Validar
+        run: terraform validate
+
+  kubernetes:
+    name: Kubernetes (render y esquema)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Renderizar overlays
+        run: |
+          mkdir -p rendered
+          kubectl kustomize k8s/overlays/local > rendered/local.yaml
+          sed -e "s|ECR_REPOSITORY_URL|123456789012.dkr.ecr.us-east-1.amazonaws.com/contracts-pricing-api|" \
+              -e "s|IMAGE_TAG|0000000000000000000000000000000000000000|" \
+              k8s/overlays/aws/kustomization.yaml > /tmp/kustomization.yaml
+          cp /tmp/kustomization.yaml k8s/overlays/aws/kustomization.yaml
+          kubectl kustomize k8s/overlays/aws > rendered/aws.yaml
+
+      - name: Validar contra el esquema de Kubernetes
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz
+          ./kubeconform -strict -summary \
+            rendered/local.yaml rendered/aws.yaml \
+            k8s/cluster/namespace.yaml k8s/cluster/aws/storageclass-gp3.yaml
+
+  security:
+    name: Auditoría de configuración (Trivy)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Escanear Terraform, Kubernetes y workflows
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: CRITICAL,HIGH,MEDIUM
+          format: sarif
+          output: trivy-config.sarif
+
+      - name: Publicar hallazgos en la pestaña Security de GitHub
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-config.sarif
+          category: trivy-config

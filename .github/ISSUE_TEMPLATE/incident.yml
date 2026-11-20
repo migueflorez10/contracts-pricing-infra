@@ -1,0 +1,26 @@
+name: Incidente o defecto de infraestructura
+description: Registra una falla de despliegue, del clúster o del pipeline
+title: "[Incidente] "
+labels: ["bug", "infra"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Qué pasó
+    validations:
+      required: true
+  - type: input
+    id: run
+    attributes:
+      label: Ejecución del pipeline
+      placeholder: URL de la ejecución en GitHub Actions
+  - type: input
+    id: image
+    attributes:
+      label: Imagen involucrada
+      placeholder: SHA del commit
+  - type: textarea
+    id: action
+    attributes:
+      label: Acción tomada
+      placeholder: Rollback, corrección, etc.

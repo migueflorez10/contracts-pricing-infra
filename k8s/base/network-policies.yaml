@@ -1,0 +1,45 @@
+# Por defecto, nadie puede recibir tráfico dentro del namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+# La API recibe tráfico HTTP desde el balanceador o el port-forward.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-http
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: contracts-pricing-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 8080
+---
+# La base de datos solo acepta conexiones de la API.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-postgres-from-api
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: contracts-pricing-api
+      ports:
+        - protocol: TCP
+          port: 5432

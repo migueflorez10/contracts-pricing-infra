@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: contracts-pricing-api
+  labels:
+    app.kubernetes.io/name: contracts-pricing-api
+    app.kubernetes.io/component: api
+  annotations:
+    # Excepciones revisadas y aceptadas en la auditoría con Checkov
+    checkov.io/skip1: CKV_K8S_43=Las etiquetas de ECR son inmutables y corresponden al SHA del commit
+    checkov.io/skip2: CKV_K8S_35=Spring Boot toma las credenciales de variables de entorno inyectadas desde un Secret
+spec:
+  replicas: 2
+  revisionHistoryLimit: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: contracts-pricing-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: contracts-pricing-api
+        app.kubernetes.io/component: api
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 40
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: contracts-pricing-api
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: contracts-pricing-api-config
+          env:
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: contracts-pricing-db
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: contracts-pricing-db
+                  key: password
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 10"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

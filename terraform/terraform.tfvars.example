@@ -1,0 +1,11 @@
+# Copia este archivo como terraform.tfvars y ajusta los valores.
+# terraform.tfvars está en .gitignore: no se sube al repositorio.
+
+aws_region         = "us-east-1"
+github_owner       = "migueflorez10"
+budget_alert_email = "tu-correo@ejemplo.com"
+monthly_budget_usd = 20
+
+# Recomendado: restringe la administración del clúster a tu IP pública (ejemplo: "181.50.10.20/32").
+# Deja 0.0.0.0/0 solo si vas a desplegar desde GitHub Actions, que usa IPs variables.
+admin_cidrs = ["0.0.0.0/0"]

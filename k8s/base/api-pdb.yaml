@@ -1,0 +1,10 @@
+# Durante mantenimientos del clúster siempre queda al menos una réplica de la API disponible.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: contracts-pricing-api
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: contracts-pricing-api

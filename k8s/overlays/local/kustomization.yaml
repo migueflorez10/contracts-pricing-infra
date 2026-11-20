@@ -1,0 +1,42 @@
+# Despliegue local en kind. La contraseña de este overlay es solo para desarrollo.
+# En local la imagen se carga directamente en kind, por eso se usa imagePullPolicy IfNotPresent.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: contracts
+
+resources:
+  - ../../base
+
+images:
+  - name: contracts-pricing-api
+    newName: contracts-pricing-api
+    newTag: local
+
+secretGenerator:
+  - name: contracts-pricing-db
+    literals:
+      - username=contracts
+      - password=local-dev-only
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+patches:
+  - target:
+      kind: Deployment
+      name: contracts-pricing-api
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      - op: add
+        path: /metadata/annotations/checkov.io~1skip3
+        value: CKV_K8S_15=En local la imagen se carga en kind y no se descarga de un registro
+  - target:
+      kind: StatefulSet
+      name: postgres
+    patch: |-
+      - op: add
+        path: /metadata/annotations/checkov.io~1skip3
+        value: CKV_K8S_15=Entorno local de desarrollo

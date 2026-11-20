@@ -1,0 +1,13 @@
+# Se aplica una sola vez, con permisos de administrador del clúster.
+# El pipeline de despliegue solo tiene permisos dentro de este namespace.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: contracts
+  labels:
+    app.kubernetes.io/part-of: contracts-pricing
+    # Pod Security Standards: rechaza pods que corran como root o con privilegios
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

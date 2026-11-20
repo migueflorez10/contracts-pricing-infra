@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: contracts-pricing-api-config
+  labels:
+    app.kubernetes.io/name: contracts-pricing-api
+data:
+  DB_URL: jdbc:postgresql://postgres:5432/contracts
+  JAVA_OPTS: -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError

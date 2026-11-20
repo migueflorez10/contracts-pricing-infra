@@ -1,0 +1,113 @@
+name: Deploy
+
+# Despliegue manual de una imagen ya publicada en ECR.
+# El entorno "production" exige la aprobación de un revisor: queda registro de quién aprobó y cuándo.
+# checkov:skip=CKV_GHA_7:El input solo selecciona una imagen ya construida; se valida su formato y que exista en ECR
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Commit (SHA completo) de la imagen a desplegar
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Desplegar en EKS
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+      ECR_REPOSITORY_URL: ${{ vars.ECR_REPOSITORY_URL }}
+      IMAGE_TAG: ${{ inputs.image_tag }}
+    steps:
+      - name: Validar el formato de la etiqueta
+        run: |
+          if ! [[ "$IMAGE_TAG" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::image_tag debe ser el SHA completo de un commit (40 caracteres hexadecimales)."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Autenticarse en AWS (OIDC, sin llaves guardadas)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Verificar que la imagen existe en ECR
+        run: |
+          REPOSITORY_NAME="${ECR_REPOSITORY_URL#*/}"
+          aws ecr describe-images \
+            --repository-name "$REPOSITORY_NAME" \
+            --image-ids imageTag="$IMAGE_TAG" > /dev/null
+
+      - name: Conectar kubectl al clúster
+        run: aws eks update-kubeconfig --region "$AWS_REGION" --name "$CLUSTER_NAME"
+
+      - name: Crear o actualizar el secreto de la base de datos
+        env:
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          kubectl -n contracts create secret generic contracts-pricing-db \
+            --from-literal=username="$DB_USER" \
+            --from-literal=password="$DB_PASSWORD" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Fijar la imagen a desplegar
+        run: |
+          sed -i \
+            -e "s|ECR_REPOSITORY_URL|${ECR_REPOSITORY_URL}|" \
+            -e "s|IMAGE_TAG|${IMAGE_TAG}|" \
+            k8s/overlays/aws/kustomization.yaml
+          kubectl kustomize k8s/overlays/aws > rendered.yaml
+          grep "image: ${ECR_REPOSITORY_URL}:${IMAGE_TAG}" rendered.yaml
+
+      - name: Aplicar manifiestos
+        id: apply
+        run: kubectl apply -f rendered.yaml
+
+      - name: Registrar la causa del cambio para el historial de despliegues
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          kubectl -n contracts annotate deployment/contracts-pricing-api --overwrite \
+            kubernetes.io/change-cause="image=${IMAGE_TAG} actor=${{ github.actor }} run=${RUN_URL}"
+
+      - name: Esperar a que el despliegue termine
+        run: kubectl -n contracts rollout status deployment/contracts-pricing-api --timeout=300s
+
+      - name: Revertir a la versión anterior si el despliegue falla
+        if: failure() && steps.apply.outcome == 'success'
+        run: |
+          kubectl -n contracts rollout undo deployment/contracts-pricing-api || true
+          kubectl -n contracts rollout status deployment/contracts-pricing-api --timeout=300s || true
+
+      - name: Resumen
+        if: success()
+        run: |
+          HOST=$(kubectl -n contracts get service contracts-pricing-api -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          {
+            echo "### Despliegue completado"
+            echo ""
+            echo "- Imagen: \`${ECR_REPOSITORY_URL}:${IMAGE_TAG}\`"
+            echo "- Ejecutado por: ${{ github.actor }}"
+            echo "- URL: http://${HOST}/swagger-ui.html"
+            echo ""
+            echo "#### Historial de despliegues"
+            echo '```'
+            kubectl -n contracts rollout history deployment/contracts-pricing-api
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

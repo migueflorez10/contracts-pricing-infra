@@ -1,0 +1,45 @@
+# Despliegue en Amazon EKS.
+# El pipeline reemplaza ECR_REPOSITORY_URL e IMAGE_TAG antes de aplicar.
+# El Secret contracts-pricing-db lo crea el pipeline desde los secretos de GitHub: no vive en el repositorio.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: contracts
+
+resources:
+  - ../../base
+
+images:
+  - name: contracts-pricing-api
+    newName: ECR_REPOSITORY_URL
+    newTag: IMAGE_TAG
+
+patches:
+  - target:
+      kind: Service
+      name: contracts-pricing-api
+    patch: |-
+      - op: replace
+        path: /spec/type
+        value: LoadBalancer
+      - op: add
+        path: /metadata/annotations
+        value:
+          service.beta.kubernetes.io/aws-load-balancer-type: nlb
+  - target:
+      kind: StatefulSet
+      name: postgres
+    patch: |-
+      - op: add
+        path: /spec/volumeClaimTemplates/0/spec/storageClassName
+        value: gp3
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Always
+  - target:
+      kind: Deployment
+      name: contracts-pricing-api
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Always
