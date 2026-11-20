@@ -11,8 +11,8 @@ resources:
 
 images:
   - name: contracts-pricing-api
-    newName: ECR_REPOSITORY_URL
-    newTag: IMAGE_TAG
+    newName: "ECR_REPOSITORY_URL"
+    newTag: "IMAGE_TAG"
 
 patches:
   - target:
