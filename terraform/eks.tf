@@ -66,7 +66,7 @@ module "eks" {
 module "ebs_csi_irsa" {
   # checkov:skip=CKV_TF_1:Módulo oficial del Terraform Registry fijado por versión
   source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
-  version = "~> 5.0"
+  version = "~> 6.11"
 
   role_name_prefix      = "${var.project_name}-ebs-csi-"
   attach_ebs_csi_policy = true
