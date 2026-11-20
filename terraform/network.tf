@@ -7,7 +7,7 @@ locals {
 module "vpc" {
   # checkov:skip=CKV_TF_1:Módulo oficial del Terraform Registry fijado por versión
   source  = "terraform-aws-modules/vpc/aws"
-  version = "~> 5.0"
+  version = "~> 6.8"
 
   name = "${var.project_name}-vpc"
   cidr = "10.0.0.0/16"
